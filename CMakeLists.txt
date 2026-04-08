@@ -21,9 +21,46 @@ endif()
 # Find threads
 find_package(Threads REQUIRED)
 
+# OpenMP — required by ggml-cpu when libggml-cpu.a is built with OpenMP
+# enabled (the default on Linux). Without this, every executable that
+# transitively depends on ggml-cpu will fail to link with undefined
+# references to GOMP_parallel / GOMP_barrier / omp_get_thread_num.
+# On macOS the Apple Accelerate path is used instead, so OpenMP is optional.
+if(NOT APPLE)
+    find_package(OpenMP)
+endif()
+
 # GGML library paths
 set(GGML_DIR "${CMAKE_CURRENT_SOURCE_DIR}/ggml")
 set(GGML_BUILD_DIR "${GGML_DIR}/build")
+
+# If the bundled ggml submodule is present and the user hasn't already
+# built it, build it as a subdirectory of this project so the user only
+# needs one cmake/cmake --build cycle. The legacy
+# ${GGML_BUILD_DIR}/src target_link_directories path below still works
+# either way (CMake's static .a files end up in the same place).
+if(EXISTS "${GGML_DIR}/CMakeLists.txt"
+   AND NOT EXISTS "${GGML_BUILD_DIR}/src/libggml.a"
+   AND NOT EXISTS "${GGML_BUILD_DIR}/src/libggml.so")
+    message(STATUS "qwen3-asr: building bundled ggml submodule via add_subdirectory(${GGML_DIR})")
+    set(GGML_BUILD_TESTS  OFF CACHE BOOL "" FORCE)
+    set(GGML_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+    add_subdirectory(${GGML_DIR} ${CMAKE_CURRENT_BINARY_DIR}/_ggml EXCLUDE_FROM_ALL)
+    # When ggml is built via add_subdirectory the targets are real CMake
+    # imported targets named `ggml`/`ggml-base`/`ggml-cpu`, so the
+    # downstream target_link_libraries(... ggml ...) lines work without
+    # needing the legacy target_link_directories ${GGML_BUILD_DIR}/src
+    # path. Set a flag so we can keep both styles working.
+    set(QWEN3_ASR_GGML_AS_SUBDIRECTORY ON)
+endif()
+
+# Helper: link OpenMP if available, otherwise no-op (Apple). Used by every
+# target that pulls in libggml-cpu.a.
+function(qwen3_link_openmp target)
+    if(NOT APPLE AND OpenMP_CXX_FOUND)
+        target_link_libraries(${target} PUBLIC OpenMP::OpenMP_CXX)
+    endif()
+endfunction()
 
 # Mel spectrogram library
 add_library(mel_spectrogram STATIC
@@ -61,6 +98,7 @@ target_link_libraries(audio_encoder PUBLIC
     ggml-cpu
     Threads::Threads
 )
+qwen3_link_openmp(audio_encoder)
 
 # Text decoder library (GGML-based)
 add_library(text_decoder STATIC
@@ -79,6 +117,7 @@ target_link_libraries(text_decoder PUBLIC
     ggml-cpu
     Threads::Threads
 )
+qwen3_link_openmp(text_decoder)
 
 # Audio injection library (pure C++, no GGML dependency)
 add_library(audio_injection STATIC
@@ -122,8 +161,10 @@ target_link_libraries(forced_aligner PUBLIC
     ggml-cpu
     Threads::Threads
 )
+qwen3_link_openmp(forced_aligner)
 
-# CLI executable
+# CLI executable. OpenMP propagates transitively from audio_encoder /
+# text_decoder / forced_aligner via the qwen3_link_openmp() helper above.
 add_executable(qwen3-asr-cli
     src/main.cpp
 )
@@ -192,6 +233,7 @@ target_link_libraries(test_embedding PRIVATE
     ggml-cpu
     Threads::Threads
 )
+qwen3_link_openmp(test_embedding)
 
 # Debug decoder test
 add_executable(test_decoder_debug
