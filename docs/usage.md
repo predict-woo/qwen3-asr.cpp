@@ -1,6 +1,6 @@
 # Qwen3-ASR CLI Usage Guide
 
-Complete documentation for the `qwen3-asr-cli` command-line interface.
+Complete documentation for the `qwen3-asr-cli` command-line interface and the `qwen3-asr-server` HTTP API server.
 
 ## Synopsis
 
@@ -202,6 +202,79 @@ ffmpeg -i stereo.wav -ar 16000 -ac 1 -c:a pcm_s16le mono.wav
 
 # Extract audio from video
 ffmpeg -i video.mp4 -vn -ar 16000 -ac 1 -c:a pcm_s16le audio.wav
+```
+
+## OpenAI-Compatible Server
+
+`qwen3-asr-server` serves a minimal OpenAI-compatible transcription API at `/v1/audio/transcriptions`.
+
+### Server Options
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `-m, --model <path>` | `models/qwen3-asr-0.6b-q8_0.gguf` | Path to ASR GGUF model |
+| `--host <host>` | `127.0.0.1` | Hostname or IP address to bind |
+| `--port <port>` | `8080` | Port to bind |
+| `-t, --threads <n>` | 4 | Number of inference threads |
+| `--max-tokens <n>` | 1024 | Maximum tokens to generate |
+| `--max-upload-mb <n>` | 512 | Maximum upload size in MiB |
+| `--tmp-dir <path>` | `/tmp` | Directory for uploaded audio files |
+| `--convert` | off | Convert uploaded audio to 16 kHz mono WAV with ffmpeg |
+
+### Start Server
+
+```bash
+./build/qwen3-asr-server \
+    -m models/qwen3-asr-0.6b-q8_0.gguf \
+    --host 127.0.0.1 \
+    --port 8080 \
+    -t 8
+```
+
+By default uploaded audio must already be 16 kHz mono PCM WAV. To accept formats such as MP3 or M4A, start the server with `--convert` and make sure `ffmpeg` is installed:
+
+```bash
+./build/qwen3-asr-server \
+    -m models/qwen3-asr-0.6b-q8_0.gguf \
+    --convert
+```
+
+### Transcription Request
+
+```bash
+curl http://127.0.0.1:8080/v1/audio/transcriptions \
+    -F file=@audio.wav \
+    -F model=qwen3-asr \
+    -F response_format=json
+```
+
+Supported multipart fields:
+
+| Field | Description |
+|-------|-------------|
+| `file` | Audio file upload (required) |
+| `model` | Accepted for OpenAI client compatibility; the server uses the model loaded at startup |
+| `language` | Optional language hint |
+| `response_format` | `json`, `text`, or `verbose_json` |
+
+`response_format=json` returns:
+
+```json
+{"text":"transcribed text"}
+```
+
+`response_format=verbose_json` returns a minimal verbose payload with `task`, `language`, `duration`, `text`, and an empty `segments` array.
+
+### Health Check
+
+```bash
+curl http://127.0.0.1:8080/health
+```
+
+Expected response:
+
+```json
+{"status":"ok"}
 ```
 
 ## Performance Tips

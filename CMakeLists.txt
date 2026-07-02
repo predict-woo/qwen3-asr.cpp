@@ -38,6 +38,7 @@ endif()
 
 add_subdirectory(ggml)
 file(GLOB SOURCES "src/*.*")
+list(REMOVE_ITEM SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/server.cpp")
 
 find_package(Threads REQUIRED)
 
@@ -91,6 +92,20 @@ target_include_directories(qwen3-asr-cli PRIVATE
 
 target_link_libraries(qwen3-asr-cli PRIVATE qwen3-asr ggml Threads::Threads)
 
+# ==================================== Server ====================================
+add_executable(qwen3-asr-server
+        src/server.cpp
+)
+
+target_include_directories(qwen3-asr-server PRIVATE
+        ggml/include
+        ggml/src
+        include
+        src
+        third_party
+)
+
+target_link_libraries(qwen3-asr-server PRIVATE qwen3-asr ggml Threads::Threads)
 
 # ==================================== Test  ====================================
 if (QWEN3_ASR_TEST)
@@ -176,7 +191,7 @@ if (QWEN3_ASR_TEST)
     add_test(NAME test_tokenization COMMAND test_tokenization)
 endif ()
 
-install(TARGETS qwen3-asr qwen3-asr-cli
+install(TARGETS qwen3-asr qwen3-asr-cli qwen3-asr-server
     LIBRARY DESTINATION lib
     ARCHIVE DESTINATION lib
     RUNTIME DESTINATION bin

@@ -10,6 +10,7 @@ It performs speech recognition and forced alignment with word-level timestamps.
 ### Core Components
 
 - `cli/main.cpp` — CLI entry point, mode dispatch (transcription, alignment, combined)
+- `src/server.cpp` — OpenAI-compatible HTTP API server (`/v1/audio/transcriptions`)
 - `src/qwen3_asr.cpp` `include/qwen3_asr.h` — High-level ASR orchestration (mel → encoder → decoder)
 - `src/forced_aligner.cpp` `include/forced_aligner.h` — Forced aligner (separate encoder + decoder, chunked convolution, BPE tokenizer, Korean word splitting)
 - `src/text_decoder.cpp` `src/text_decoder.h` — Qwen2-based text decoder with KV cache, flash attention, RoPE
@@ -45,6 +46,7 @@ It performs speech recognition and forced alignment with word-level timestamps.
 
 - CMake 3.14+, C++17
 - GGML included as git submodule at `./ggml`
+- `third_party/httplib.h` provides the single-header HTTP server dependency
 - Accelerate framework linked on Apple for vDSP mel spectrogram
 - Build: `cmake --build build -j$(sysctl -n hw.ncpu)`
 
@@ -54,6 +56,7 @@ It performs speech recognition and forced alignment with word-level timestamps.
 - **ASR**: `./build/qwen3-asr-cli -m models/qwen3-asr-0.6b-f16.gguf -f audio.wav`
 - **Align**: `./build/qwen3-asr-cli -m models/qwen3-forced-aligner-0.6b-f16.gguf -f audio.wav --align --text "text" --lang korean`
 - **Combined**: `./build/qwen3-asr-cli -m models/qwen3-asr-0.6b-f16.gguf --aligner-model models/qwen3-forced-aligner-0.6b-f16.gguf -f audio.wav --transcribe-align`
+- **Server**: `./build/qwen3-asr-server -m models/qwen3-asr-0.6b-q8_0.gguf --host 127.0.0.1 --port 8080`
 
 ### Conventions
 
@@ -62,6 +65,7 @@ It performs speech recognition and forced alignment with word-level timestamps.
 - **Timing**: `QWEN3_TIMER_SCOPED("name")` macros from `src/timing.h`
 - **Memory**: RAII with explicit cleanup in destructors; mmap cleanup via munmap
 - **Tensor naming**: follows HuggingFace naming convention for weight mapping
+- **Server concurrency**: serialize requests around a loaded `Qwen3ASR` instance because the decoder KV cache is mutable
 
 ### Important Caveats
 
@@ -100,6 +104,7 @@ Memory: ~247 MB RSS, ~294 MB Metal
 - Flash attention requires contiguous memory layout
 - Korean dictionary must be UTF-8 encoded
 - Audio must be 16kHz mono PCM (conversion required otherwise)
+- Server `--convert` shells out to ffmpeg for uploaded non-WAV audio; without it, uploads must already be 16kHz mono PCM WAV
 
 ### File Organization
 

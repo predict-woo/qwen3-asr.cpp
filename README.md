@@ -7,6 +7,7 @@ A high-performance C++ implementation of Qwen3-ASR and Qwen3-ForcedAligner using
 - **Automatic Speech Recognition (ASR)**: Transcribe audio files to text in 30+ languages
 - **Forced Alignment**: Align reference text to audio with word-level timestamps
 - **Combined Pipeline** (`--transcribe-align`): Automatically runs ASR then alignment with auto language detection
+- **OpenAI-compatible API Server**: Serve `/v1/audio/transcriptions` for HTTP clients
 - **Flash Attention**: Uses `ggml_flash_attn_ext()` for fast decoding (3.7x speedup)
 - **Metal GPU Acceleration**: Optimized for Apple Silicon with dual CPU+Metal backend
 - **Accelerate/vDSP**: Highly optimized mel spectrogram computation (45x speedup)
@@ -30,6 +31,7 @@ A high-performance C++ implementation of Qwen3-ASR and Qwen3-ForcedAligner using
 - C++17 compatible compiler (Clang 7+, GCC 8+, MSVC 2019+)
 - Apple Silicon recommended (Metal GPU support)
 - GGML library (included as submodule)
+- ffmpeg (optional, only needed for server-side audio conversion with `--convert`)
 
 ## Building
 
@@ -105,6 +107,38 @@ This mode automatically:
 - Detects the language from the ASR output
 - Runs forced alignment with the detected language
 - Outputs word-level timestamps as JSON
+
+### 4. OpenAI-Compatible API Server
+
+Serve a minimal OpenAI-compatible transcription endpoint:
+
+```bash
+./build/qwen3-asr-server \
+  -m models/qwen3-asr-0.6b-q8_0.gguf \
+  --host 127.0.0.1 \
+  --port 8080 \
+  --max-upload-mb 512 \
+  -t 8
+```
+
+Transcribe through HTTP:
+
+```bash
+curl http://127.0.0.1:8080/v1/audio/transcriptions \
+  -F file=@audio.wav \
+  -F model=qwen3-asr \
+  -F response_format=json
+```
+
+The server accepts 16 kHz mono PCM WAV by default. Add `--convert` to convert uploaded audio with ffmpeg:
+
+```bash
+./build/qwen3-asr-server \
+  -m models/qwen3-asr-0.6b-q8_0.gguf \
+  --convert
+```
+
+Supported `response_format` values are `json`, `text`, and `verbose_json`.
 
 ### Output Formats
 
@@ -232,6 +266,7 @@ For production builds, omit `-DQWEN3_ASR_TIMING=ON` to remove timing overhead.
 qwen3-asr.cpp/
 ├── src/
 │   ├── main.cpp              # CLI entry point
+│   ├── server.cpp            # OpenAI-compatible HTTP API server
 │   ├── qwen3_asr.cpp/h       # High-level ASR API
 │   ├── forced_aligner.cpp/h  # Forced alignment implementation
 │   ├── audio_encoder.cpp/h   # Audio feature encoder
@@ -249,6 +284,8 @@ qwen3-asr.cpp/
 │   └── convert_hf_to_gguf.py # Model conversion script
 ├── assets/
 │   └── korean_dict_jieba.dict # Korean word dictionary (17,968 words)
+├── third_party/
+│   └── httplib.h             # cpp-httplib single-header HTTP server
 ├── models/                   # GGUF model files (not tracked in git)
 ├── ggml/                     # GGML library (git submodule)
 └── CMakeLists.txt
