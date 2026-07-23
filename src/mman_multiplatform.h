@@ -2,10 +2,16 @@
 #define MMAN_MULTIPLATFORM_H
 
 #ifdef _WIN32
-
-namespace qwen3_asr {
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
 #include <windows.h>
 #include <io.h>
+
+namespace qwen3_asr {
 
 #define PROT_READ  0x01
 #define PROT_WRITE 0x02
