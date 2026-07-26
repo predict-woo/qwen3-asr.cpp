@@ -245,6 +245,19 @@ Convert audio with ffmpeg:
 ffmpeg -i input.mp3 -ar 16000 -ac 1 -c:a pcm_s16le output.wav
 ```
 
+## Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `QWEN_USE_VRAM` | unset | Forces weight tensors into GPU VRAM. Set automatically for CUDA backends. |
+
+How to use:
+
+```bash
+export QWEN_USE_VRAM=1
+qwen3-asr-cli -m models/qwen3-asr-0.6b-f16.gguf -f audio.wav
+```
+
 ## Performance Profiling
 
 Build with timing instrumentation to see detailed breakdowns:

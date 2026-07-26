@@ -265,15 +265,15 @@ bool GGUFLoader::load_tensor_data(const std::string & path, gguf_context * ctx,
 
     // Try GPU device buffer (zero-copy on Apple Silicon unified memory)
     ggml_backend_dev_t gpu_dev = ggml_backend_dev_by_type(GGML_BACKEND_DEVICE_TYPE_GPU);
-    bool is_cuda = false;
-    if (gpu_dev) {
+    bool use_vram = getenv("QWEN_USE_VRAM") != nullptr;
+    if (!use_vram && gpu_dev) {
         const char * dev_name = ggml_backend_dev_name(gpu_dev);
         if (dev_name && (strstr(dev_name, "CUDA") != nullptr || strstr(dev_name, "cuda") != nullptr)) {
-            is_cuda = true;
+            use_vram = true;
         }
     }
 
-    if (is_cuda) {
+    if (use_vram) {
         ggml_backend_t backend = ggml_backend_dev_init(gpu_dev, nullptr);
         model.buffer = ggml_backend_alloc_ctx_tensors(model.ctx, backend);
         if (model.buffer) {
