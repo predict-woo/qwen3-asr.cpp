@@ -571,23 +571,23 @@ bool log_mel_spectrogram(const float* samples, int n_samples,
 
     std::vector<double> temp_data(mel.n_mel * compute_frames);
 
+    std::vector<float> fft_in(2 * frame_size, 0.0f);
+    std::vector<float> fft_out(8 * frame_size);
+    std::vector<double> power(n_fft);
+
     for (int i = 0; i < compute_frames; i++) {
         const int offset = i * frame_step;
 
-        std::vector<double> fft_in_d(frame_size, 0.0);
         for (int j = 0; j < frame_size; j++) {
-            fft_in_d[j] = hann[j] * static_cast<double>(samples_padded[offset + j]);
+            fft_in[j] = static_cast<float>(hann[j] * static_cast<double>(samples_padded[offset + j]));
         }
 
-        std::vector<double> power(n_fft);
+        fft(fft_in.data(), frame_size, fft_out.data());
+
         for (int k = 0; k < n_fft; k++) {
-            double re = 0.0, im = 0.0;
-            for (int n = 0; n < frame_size; n++) {
-                double angle = 2.0 * M_PI * k * n / frame_size;
-                re += fft_in_d[n] * cos(angle);
-                im -= fft_in_d[n] * sin(angle);
-            }
-            power[k] = re * re + im * im;
+            float re = fft_out[2 * k + 0];
+            float im = fft_out[2 * k + 1];
+            power[k] = (double)re * re + (double)im * im;
         }
 
         for (int j = 0; j < mel.n_mel; j++) {
