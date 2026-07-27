@@ -106,6 +106,12 @@ Memory: ~247 MB RSS, ~294 MB Metal
 - Audio must be 16kHz mono PCM (conversion required otherwise)
 - Server `--convert` shells out to ffmpeg for uploaded non-WAV audio; without it, uploads must already be 16kHz mono PCM WAV
 
+### Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `QWEN_USE_VRAM` | unset | When set to any value, forces weight tensors into GPU VRAM via `ggml_backend_alloc_ctx_tensors`. Required on Windows+Vulkan where `external_memory_host` fails. Set automatically for CUDA backends. |
+
 ### File Organization
 
 - Headers (`.h`) contain public API and documentation
