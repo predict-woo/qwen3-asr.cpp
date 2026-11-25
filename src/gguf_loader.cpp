@@ -95,6 +95,9 @@ bool GGUFLoader::create_tensors(gguf_context * ctx, audio_encoder_model & model)
     
     for (int64_t i = 0; i < n_tensors; ++i) {
         const char * name = gguf_get_tensor_name(ctx, i);
+        if (!strstr(name, "audio.encoder")) {
+            continue;
+        }
         ggml_type type = gguf_get_tensor_type(ctx, i);
         
         int64_t ne[GGML_MAX_DIMS] = {1, 1, 1, 1};
