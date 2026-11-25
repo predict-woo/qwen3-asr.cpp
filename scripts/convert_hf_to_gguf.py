@@ -4,6 +4,12 @@ Convert HuggingFace Qwen3-ASR and Qwen3-ForcedAligner models to GGUF format.
 https://huggingface.co/Qwen/Qwen3-ASR-0.6B/
 https://huggingface.co/Qwen/Qwen3-ASR-1.7B/
 https://huggingface.co/Qwen/Qwen3-ForcedAligner-0.6B/
+https://huggingface.co/oruk/oruk-fourier-2b/
+
+Supports both legacy `thinker_config` (`thinker.*`) checkpoints and native
+HuggingFace `transformers>=5.21` (`audio_config`/`text_config`,
+`model.audio_tower.*`, `model.multi_modal_projector.*`,
+`model.language_model.*`) checkpoints with tied embeddings and `tokenizer.json`.
 
 Usage:
     python scripts/convert_hf_to_gguf.py \
@@ -62,7 +68,7 @@ class Qwen3ASRConverter:
 
     # Tensor name mapping from HuggingFace to GGML conventions
     TENSOR_MAP = {
-        # Audio Tower - Conv2D front-end
+        # Audio Tower - Conv2D front-end (legacy thinker.* and native HF model.*)
         "thinker.audio_tower.conv2d1.weight": "audio.encoder.conv1.weight",
         "thinker.audio_tower.conv2d1.bias": "audio.encoder.conv1.bias",
         "thinker.audio_tower.conv2d2.weight": "audio.encoder.conv2.weight",
@@ -71,66 +77,86 @@ class Qwen3ASRConverter:
         "thinker.audio_tower.conv2d3.bias": "audio.encoder.conv3.bias",
         "thinker.audio_tower.conv_out.weight": "audio.encoder.conv_out.weight",
         "thinker.audio_tower.conv_out.bias": "audio.encoder.conv_out.bias",
+        "model.audio_tower.conv2d1.weight": "audio.encoder.conv1.weight",
+        "model.audio_tower.conv2d1.bias": "audio.encoder.conv1.bias",
+        "model.audio_tower.conv2d2.weight": "audio.encoder.conv2.weight",
+        "model.audio_tower.conv2d2.bias": "audio.encoder.conv2.bias",
+        "model.audio_tower.conv2d3.weight": "audio.encoder.conv3.weight",
+        "model.audio_tower.conv2d3.bias": "audio.encoder.conv3.bias",
+        "model.audio_tower.conv_out.weight": "audio.encoder.conv_out.weight",
+        "model.audio_tower.conv_out.bias": "audio.encoder.conv_out.bias",
         # Audio Tower - Layer norms
         "thinker.audio_tower.layer_norm.weight": "audio.encoder.ln.weight",
         "thinker.audio_tower.layer_norm.bias": "audio.encoder.ln.bias",
         "thinker.audio_tower.ln_post.weight": "audio.encoder.ln_post.weight",
         "thinker.audio_tower.ln_post.bias": "audio.encoder.ln_post.bias",
+        "model.audio_tower.layer_norm.weight": "audio.encoder.ln.weight",
+        "model.audio_tower.layer_norm.bias": "audio.encoder.ln.bias",
+        "model.audio_tower.ln_post.weight": "audio.encoder.ln_post.weight",
+        "model.audio_tower.ln_post.bias": "audio.encoder.ln_post.bias",
         # Audio Tower - Positional embedding
         "thinker.audio_tower.embed_positions.weight": "audio.encoder.pos_embd.weight",
+        "model.audio_tower.embed_positions.weight": "audio.encoder.pos_embd.weight",
         # Audio Tower - Projection layers (audio to text embedding space)
         "thinker.audio_tower.proj1.weight": "audio.encoder.proj1.weight",
         "thinker.audio_tower.proj1.bias": "audio.encoder.proj1.bias",
         "thinker.audio_tower.proj2.weight": "audio.encoder.proj2.weight",
         "thinker.audio_tower.proj2.bias": "audio.encoder.proj2.bias",
+        "model.multi_modal_projector.linear_1.weight": "audio.encoder.proj1.weight",
+        "model.multi_modal_projector.linear_1.bias": "audio.encoder.proj1.bias",
+        "model.multi_modal_projector.linear_2.weight": "audio.encoder.proj2.weight",
+        "model.multi_modal_projector.linear_2.bias": "audio.encoder.proj2.bias",
         # Text Decoder
         "thinker.model.embed_tokens.weight": "token_embd.weight",
         "thinker.model.norm.weight": "output_norm.weight",
         "thinker.lm_head.weight": "output.weight",
+        "model.language_model.embed_tokens.weight": "token_embd.weight",
+        "model.language_model.norm.weight": "output_norm.weight",
+        "lm_head.weight": "output.weight",
         # ForcedAligner specific
         "thinker.classify_head.weight": "classify_head.weight",
         "thinker.classify_head.bias": "classify_head.bias",
     }
 
-    # Regex patterns for layer-specific tensors
+    # Regex patterns for layer-specific tensors (legacy thinker.* and native HF model.*)
     AUDIO_LAYER_PATTERNS = [
         # Audio encoder transformer layers - attention weights
-        (r"thinker\.audio_tower\.layers\.(\d+)\.self_attn\.q_proj\.weight", "audio.encoder.blk.{}.attn_q.weight"),
-        (r"thinker\.audio_tower\.layers\.(\d+)\.self_attn\.k_proj\.weight", "audio.encoder.blk.{}.attn_k.weight"),
-        (r"thinker\.audio_tower\.layers\.(\d+)\.self_attn\.v_proj\.weight", "audio.encoder.blk.{}.attn_v.weight"),
-        (r"thinker\.audio_tower\.layers\.(\d+)\.self_attn\.out_proj\.weight", "audio.encoder.blk.{}.attn_out.weight"),
+        (r"(?:thinker|model)\.audio_tower\.layers\.(\d+)\.self_attn\.q_proj\.weight", "audio.encoder.blk.{}.attn_q.weight"),
+        (r"(?:thinker|model)\.audio_tower\.layers\.(\d+)\.self_attn\.k_proj\.weight", "audio.encoder.blk.{}.attn_k.weight"),
+        (r"(?:thinker|model)\.audio_tower\.layers\.(\d+)\.self_attn\.v_proj\.weight", "audio.encoder.blk.{}.attn_v.weight"),
+        (r"(?:thinker|model)\.audio_tower\.layers\.(\d+)\.self_attn\.out_proj\.weight", "audio.encoder.blk.{}.attn_out.weight"),
         # Audio encoder transformer layers - attention biases
-        (r"thinker\.audio_tower\.layers\.(\d+)\.self_attn\.q_proj\.bias", "audio.encoder.blk.{}.attn_q.bias"),
-        (r"thinker\.audio_tower\.layers\.(\d+)\.self_attn\.k_proj\.bias", "audio.encoder.blk.{}.attn_k.bias"),
-        (r"thinker\.audio_tower\.layers\.(\d+)\.self_attn\.v_proj\.bias", "audio.encoder.blk.{}.attn_v.bias"),
-        (r"thinker\.audio_tower\.layers\.(\d+)\.self_attn\.out_proj\.bias", "audio.encoder.blk.{}.attn_out.bias"),
+        (r"(?:thinker|model)\.audio_tower\.layers\.(\d+)\.self_attn\.q_proj\.bias", "audio.encoder.blk.{}.attn_q.bias"),
+        (r"(?:thinker|model)\.audio_tower\.layers\.(\d+)\.self_attn\.k_proj\.bias", "audio.encoder.blk.{}.attn_k.bias"),
+        (r"(?:thinker|model)\.audio_tower\.layers\.(\d+)\.self_attn\.v_proj\.bias", "audio.encoder.blk.{}.attn_v.bias"),
+        (r"(?:thinker|model)\.audio_tower\.layers\.(\d+)\.self_attn\.out_proj\.bias", "audio.encoder.blk.{}.attn_out.bias"),
         # Audio encoder transformer layers - layer norms
-        (r"thinker\.audio_tower\.layers\.(\d+)\.self_attn_layer_norm\.weight", "audio.encoder.blk.{}.attn_norm.weight"),
-        (r"thinker\.audio_tower\.layers\.(\d+)\.self_attn_layer_norm\.bias", "audio.encoder.blk.{}.attn_norm.bias"),
-        (r"thinker\.audio_tower\.layers\.(\d+)\.final_layer_norm\.weight", "audio.encoder.blk.{}.ffn_norm.weight"),
-        (r"thinker\.audio_tower\.layers\.(\d+)\.final_layer_norm\.bias", "audio.encoder.blk.{}.ffn_norm.bias"),
+        (r"(?:thinker|model)\.audio_tower\.layers\.(\d+)\.self_attn_layer_norm\.weight", "audio.encoder.blk.{}.attn_norm.weight"),
+        (r"(?:thinker|model)\.audio_tower\.layers\.(\d+)\.self_attn_layer_norm\.bias", "audio.encoder.blk.{}.attn_norm.bias"),
+        (r"(?:thinker|model)\.audio_tower\.layers\.(\d+)\.final_layer_norm\.weight", "audio.encoder.blk.{}.ffn_norm.weight"),
+        (r"(?:thinker|model)\.audio_tower\.layers\.(\d+)\.final_layer_norm\.bias", "audio.encoder.blk.{}.ffn_norm.bias"),
         # Audio encoder transformer layers - FFN
-        (r"thinker\.audio_tower\.layers\.(\d+)\.fc1\.weight", "audio.encoder.blk.{}.ffn_up.weight"),
-        (r"thinker\.audio_tower\.layers\.(\d+)\.fc1\.bias", "audio.encoder.blk.{}.ffn_up.bias"),
-        (r"thinker\.audio_tower\.layers\.(\d+)\.fc2\.weight", "audio.encoder.blk.{}.ffn_down.weight"),
-        (r"thinker\.audio_tower\.layers\.(\d+)\.fc2\.bias", "audio.encoder.blk.{}.ffn_down.bias"),
+        (r"(?:thinker|model)\.audio_tower\.layers\.(\d+)\.fc1\.weight", "audio.encoder.blk.{}.ffn_up.weight"),
+        (r"(?:thinker|model)\.audio_tower\.layers\.(\d+)\.fc1\.bias", "audio.encoder.blk.{}.ffn_up.bias"),
+        (r"(?:thinker|model)\.audio_tower\.layers\.(\d+)\.fc2\.weight", "audio.encoder.blk.{}.ffn_down.weight"),
+        (r"(?:thinker|model)\.audio_tower\.layers\.(\d+)\.fc2\.bias", "audio.encoder.blk.{}.ffn_down.bias"),
     ]
 
     TEXT_LAYER_PATTERNS = [
         # Text decoder transformer layers - attention
-        (r"thinker\.model\.layers\.(\d+)\.input_layernorm\.weight", "blk.{}.attn_norm.weight"),
-        (r"thinker\.model\.layers\.(\d+)\.self_attn\.q_proj\.weight", "blk.{}.attn_q.weight"),
-        (r"thinker\.model\.layers\.(\d+)\.self_attn\.k_proj\.weight", "blk.{}.attn_k.weight"),
-        (r"thinker\.model\.layers\.(\d+)\.self_attn\.v_proj\.weight", "blk.{}.attn_v.weight"),
-        (r"thinker\.model\.layers\.(\d+)\.self_attn\.o_proj\.weight", "blk.{}.attn_output.weight"),
+        (r"(?:thinker\.model|model\.language_model)\.layers\.(\d+)\.input_layernorm\.weight", "blk.{}.attn_norm.weight"),
+        (r"(?:thinker\.model|model\.language_model)\.layers\.(\d+)\.self_attn\.q_proj\.weight", "blk.{}.attn_q.weight"),
+        (r"(?:thinker\.model|model\.language_model)\.layers\.(\d+)\.self_attn\.k_proj\.weight", "blk.{}.attn_k.weight"),
+        (r"(?:thinker\.model|model\.language_model)\.layers\.(\d+)\.self_attn\.v_proj\.weight", "blk.{}.attn_v.weight"),
+        (r"(?:thinker\.model|model\.language_model)\.layers\.(\d+)\.self_attn\.o_proj\.weight", "blk.{}.attn_output.weight"),
         # Text decoder transformer layers - QK norms (Qwen3 uses RMSNorm on Q and K)
-        (r"thinker\.model\.layers\.(\d+)\.self_attn\.q_norm\.weight", "blk.{}.attn_q_norm.weight"),
-        (r"thinker\.model\.layers\.(\d+)\.self_attn\.k_norm\.weight", "blk.{}.attn_k_norm.weight"),
+        (r"(?:thinker\.model|model\.language_model)\.layers\.(\d+)\.self_attn\.q_norm\.weight", "blk.{}.attn_q_norm.weight"),
+        (r"(?:thinker\.model|model\.language_model)\.layers\.(\d+)\.self_attn\.k_norm\.weight", "blk.{}.attn_k_norm.weight"),
         # Text decoder transformer layers - FFN
-        (r"thinker\.model\.layers\.(\d+)\.post_attention_layernorm\.weight", "blk.{}.ffn_norm.weight"),
-        (r"thinker\.model\.layers\.(\d+)\.mlp\.gate_proj\.weight", "blk.{}.ffn_gate.weight"),
-        (r"thinker\.model\.layers\.(\d+)\.mlp\.up_proj\.weight", "blk.{}.ffn_up.weight"),
-        (r"thinker\.model\.layers\.(\d+)\.mlp\.down_proj\.weight", "blk.{}.ffn_down.weight"),
+        (r"(?:thinker\.model|model\.language_model)\.layers\.(\d+)\.post_attention_layernorm\.weight", "blk.{}.ffn_norm.weight"),
+        (r"(?:thinker\.model|model\.language_model)\.layers\.(\d+)\.mlp\.gate_proj\.weight", "blk.{}.ffn_gate.weight"),
+        (r"(?:thinker\.model|model\.language_model)\.layers\.(\d+)\.mlp\.up_proj\.weight", "blk.{}.ffn_up.weight"),
+        (r"(?:thinker\.model|model\.language_model)\.layers\.(\d+)\.mlp\.down_proj\.weight", "blk.{}.ffn_down.weight"),
     ]
 
     def __init__(
@@ -138,10 +164,12 @@ class Qwen3ASRConverter:
             input_dir: Path,
             output_path: Path,
             output_type: str = "f16",
+            model_name: str | None = None,
     ):
         self.input_dir = input_dir
         self.output_path = output_path
         self.output_type = output_type
+        self._explicit_model_name = model_name
 
         # Load config
         self.config = self._load_config()
@@ -162,13 +190,18 @@ class Qwen3ASRConverter:
     def _is_forced_aligner(self) -> bool:
         """Check if this is a ForcedAligner model."""
         thinker_config = self.config.get("thinker_config", {})
-        return thinker_config.get("model_type") == "qwen3_forced_aligner"
+        return (
+            thinker_config.get("model_type") == "qwen3_forced_aligner"
+            or self.config.get("model_type") == "qwen3_forced_aligner"
+        )
 
     def _extract_params(self) -> None:
-        """Extract model parameters from config."""
-        thinker_config = self.config.get("thinker_config", {})
-        audio_config = thinker_config.get("audio_config", {})
-        text_config = thinker_config.get("text_config", {})
+        """Extract model parameters from legacy or native HF config."""
+        # Legacy Qwen/Qwen3-ASR checkpoints nest audio_config/text_config under
+        # thinker_config; native transformers>=5.21 checkpoints place them at top level.
+        root_cfg = self.config.get("thinker_config") or self.config
+        audio_config = root_cfg.get("audio_config", {})
+        text_config = root_cfg.get("text_config", {})
 
         # Audio encoder parameters
         self.audio_encoder_layers = audio_config.get("encoder_layers", audio_config.get("num_hidden_layers", 18))
@@ -184,29 +217,36 @@ class Qwen3ASRConverter:
         self.text_attention_heads = text_config.get("num_attention_heads", 16)
         self.text_kv_heads = text_config.get("num_key_value_heads", 8)
         self.text_intermediate_size = text_config.get("intermediate_size", 3072)
-        self.text_rope_theta = text_config.get("rope_theta", 1000000)
+        rope_parameters = text_config.get("rope_parameters") or {}
+        self.text_rope_theta = text_config.get(
+            "rope_theta",
+            rope_parameters.get("rope_theta", 1000000),
+        )
         self.text_rms_norm_eps = text_config.get("rms_norm_eps", 1e-6)
         self.text_head_dim = text_config.get("head_dim", 128)
         self.vocab_size = text_config.get("vocab_size", 151936)
 
         # Special tokens
-        self.audio_start_token_id = thinker_config.get("audio_start_token_id", 151669)
-        self.audio_end_token_id = thinker_config.get("audio_end_token_id", 151670)
-        self.audio_pad_token_id = thinker_config.get("audio_token_id", 151676)
+        self.audio_start_token_id = root_cfg.get("audio_start_token_id", 151669)
+        self.audio_end_token_id = root_cfg.get("audio_end_token_id", 151670)
+        self.audio_pad_token_id = root_cfg.get("audio_token_id", 151676)
 
         # ForcedAligner specific
         if self.is_forced_aligner:
-            self.classify_num = thinker_config.get("classify_num", 5000)
+            self.classify_num = root_cfg.get("classify_num", 5000)
             self.timestamp_token_id = self.config.get("timestamp_token_id", 151705)
         else:
             self.classify_num = None
             self.timestamp_token_id = None
 
         # Model name
-        model_size = get_folder_size(self.input_dir)
-        if self.is_forced_aligner:
+        if self._explicit_model_name:
+            self.model_name = self._explicit_model_name
+        elif self.is_forced_aligner:
             self.model_name = "Qwen3-ForcedAligner-0.6B"
-        elif model_size > 1024 * 1024 * 1024 * 3:   # 3GB
+        elif "fourier" in self.input_dir.name.lower():
+            self.model_name = "Oruk-Fourier-2B"
+        elif self.audio_d_model >= 1024 or self.text_hidden_size >= 2048 or get_folder_size(self.input_dir) > 1024 * 1024 * 1024 * 3:
             self.model_name = "Qwen3-ASR-1.7B"
         else:
             self.model_name = "Qwen3-ASR-0.6B"
@@ -220,14 +260,30 @@ class Qwen3ASRConverter:
         with open(tokenizer_config_path, "r", encoding="utf-8") as f:
             return json.load(f)
 
-    def _load_vocab_dict(self) -> dict[str, int]:
-        """Load the base tokenizer vocab from vocab.json only."""
-        vocab_path = self.input_dir / "vocab.json"
-        if not vocab_path.exists():
-            raise FileNotFoundError(f"Vocab file not found: {vocab_path}")
+    def _load_tokenizer_json(self) -> dict[str, Any]:
+        """Load tokenizer.json if present."""
+        tokenizer_json_path = self.input_dir / "tokenizer.json"
+        if not tokenizer_json_path.exists():
+            return {}
 
-        with open(vocab_path, "r", encoding="utf-8") as f:
+        with open(tokenizer_json_path, "r", encoding="utf-8") as f:
             return json.load(f)
+
+    def _load_vocab_dict(self) -> dict[str, int]:
+        """Load base tokenizer vocabulary from vocab.json or tokenizer.json."""
+        vocab_path = self.input_dir / "vocab.json"
+        if vocab_path.exists():
+            with open(vocab_path, "r", encoding="utf-8") as f:
+                return json.load(f)
+
+        tokenizer_json = self._load_tokenizer_json()
+        model_vocab = (tokenizer_json.get("model") or {}).get("vocab")
+        if isinstance(model_vocab, dict) and model_vocab:
+            return dict(model_vocab)
+
+        raise FileNotFoundError(
+            f"Neither vocab.json nor tokenizer.json with model.vocab found in {self.input_dir}"
+        )
 
     def _map_tensor_name(self, hf_name: str) -> str | None:
         """Map HuggingFace tensor name to GGML convention."""
@@ -358,15 +414,23 @@ class Qwen3ASRConverter:
             # Default to F16
             return data.astype(np.float16), gguf.GGMLQuantizationType.F16
 
-    def _load_tokenizer(self) -> tuple[list[str], list[int], list[str]]:
-        """Load tokenizer vocabulary and merges."""
+    def _load_tokenizer(self) -> tuple[list[str], list[int], list[str], dict[str, int]]:
+        """Load tokenizer vocabulary and merges from vocab.json/merges.txt or tokenizer.json."""
         vocab_dict = self._load_vocab_dict()
         tokenizer_config = self._load_tokenizer_config()
+        tokenizer_json = self._load_tokenizer_json()
         merges_path = self.input_dir / "merges.txt"
 
-        added_tokens = tokenizer_config.get("added_tokens_decoder", {})
+        added_tokens: dict[int, dict[str, Any]] = {}
+        for tok in tokenizer_json.get("added_tokens", []):
+            tok_id = tok.get("id")
+            if tok_id is not None:
+                added_tokens[int(tok_id)] = tok
+        for tok_id_str, tok_info in tokenizer_config.get("added_tokens_decoder", {}).items():
+            added_tokens[int(tok_id_str)] = tok_info
+
         max_vocab_id = max(vocab_dict.values()) if vocab_dict else -1
-        max_added_id = max((int(tok_id) for tok_id in added_tokens.keys()), default=-1)
+        max_added_id = max(added_tokens.keys(), default=-1)
         token_count = max(self.vocab_size, max_vocab_id + 1, max_added_id + 1)
 
         tokens = [f"[PAD{i}]" for i in range(token_count)]
@@ -376,8 +440,7 @@ class Qwen3ASRConverter:
             tokens[token_id] = token
             toktypes[token_id] = gguf.TokenType.NORMAL
 
-        for token_id_str, token_info in added_tokens.items():
-            token_id = int(token_id_str)
+        for token_id, token_info in added_tokens.items():
             token = token_info.get("content")
             if token is None:
                 continue
@@ -390,20 +453,28 @@ class Qwen3ASRConverter:
             )
             vocab_dict[token] = token_id
 
-        # Load merges
-        merges = []
+        # Load merges from merges.txt or tokenizer.json
+        merges: list[str] = []
         if merges_path.exists():
             with open(merges_path, "r", encoding="utf-8") as f:
                 for line in f:
                     line = line.strip()
                     if line and not line.startswith("#"):
                         merges.append(line)
+        else:
+            raw_merges = (tokenizer_json.get("model") or {}).get("merges") or []
+            for entry in raw_merges:
+                if isinstance(entry, str):
+                    merges.append(entry)
+                elif isinstance(entry, (list, tuple)) and len(entry) == 2:
+                    merges.append(f"{entry[0]} {entry[1]}")
 
+        source_desc = "vocab.json" if (self.input_dir / "vocab.json").exists() else "tokenizer.json"
         logger.info(
-            "Using tokenizer vocab built from vocab.json + tokenizer_config.json "
+            f"Using tokenizer vocab built from {source_desc} + tokenizer_config.json "
             f"({len(vocab_dict)} entries)"
         )
-        return tokens, toktypes, merges
+        return tokens, toktypes, merges, vocab_dict
 
     def convert(self) -> None:
         """Convert the model to GGUF format."""
@@ -517,14 +588,8 @@ class Qwen3ASRConverter:
 
     def _add_tokenizer(self, writer: gguf.GGUFWriter) -> None:
         """Add tokenizer to GGUF writer."""
-        tokens, toktypes, merges = self._load_tokenizer()
-        vocab = self._load_vocab_dict()
+        tokens, toktypes, merges, vocab = self._load_tokenizer()
         tokenizer_config = self._load_tokenizer_config()
-
-        for token_id_str, token_info in tokenizer_config.get("added_tokens_decoder", {}).items():
-            token = token_info.get("content")
-            if token is not None:
-                vocab[token] = int(token_id_str)
 
         # Tokenizer model type
         writer.add_tokenizer_model("gpt2")
@@ -557,7 +622,7 @@ class Qwen3ASRConverter:
 
         logger.info(
             "Added tokenizer with "
-            f"{len(tokens)} tokens and {len(merges)} merges from vocab.json + tokenizer_config.json"
+            f"{len(tokens)} tokens and {len(merges)} merges"
         )
 
 
@@ -584,6 +649,12 @@ def main():
         help="Output data type (default: f16). q8_0 provides ~50%% size reduction with minimal quality loss."
     )
     parser.add_argument(
+        "--name",
+        type=str,
+        default=None,
+        help="Optional GGUF general.name override (default: inferred from config/directory)"
+    )
+    parser.add_argument(
         "--verbose", "-v",
         action="store_true",
         help="Enable verbose logging"
@@ -598,6 +669,7 @@ def main():
         input_dir=args.input,
         output_path=args.output,
         output_type=args.type,
+        model_name=args.name,
     )
     converter.convert()
 

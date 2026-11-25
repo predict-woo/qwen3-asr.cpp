@@ -19,11 +19,13 @@ A high-performance C++ implementation of Qwen3-ASR and Qwen3-ForcedAligner using
 
 ## Supported Models
 
-| Model | Size | Description |
-|-------|------|-------------|
-| `qwen3-asr-0.6b-f16.gguf` | ~1.8 GB | ASR model, F16 precision |
-| `qwen3-asr-0.6b-q8_0.gguf` | ~1.3 GB | ASR model, Q8_0 quantized |
-| `qwen3-forced-aligner-0.6b-f16.gguf` | ~1.8 GB | Forced alignment model |
+| Model | Size | Languages / License | Description |
+|-------|------|---------------------|-------------|
+| `qwen3-asr-0.6b-f16.gguf` | ~1.8 GB | 30+ languages (Apache-2.0) | [Qwen/Qwen3-ASR-0.6B](https://huggingface.co/Qwen/Qwen3-ASR-0.6B), F16 |
+| `qwen3-asr-0.6b-q8_0.gguf` | ~1.3 GB | 30+ languages (Apache-2.0) | [Qwen/Qwen3-ASR-0.6B](https://huggingface.co/Qwen/Qwen3-ASR-0.6B), Q8_0 |
+| `qwen3-asr-1.7b-q8_0.gguf` | ~2.5 GB | 30+ languages (Apache-2.0) | [Qwen/Qwen3-ASR-1.7B](https://huggingface.co/Qwen/Qwen3-ASR-1.7B), Q8_0 |
+| `oruk-fourier-2b-q8_0.gguf` | ~2.2 GB | English-only (CC BY-NC 4.0) | [oruk/oruk-fourier-2b](https://huggingface.co/oruk/oruk-fourier-2b), Q8_0 (tied embeddings) |
+| `qwen3-forced-aligner-0.6b-f16.gguf` | ~1.8 GB | 30+ languages (Apache-2.0) | [Qwen/Qwen3-ForcedAligner-0.6B](https://huggingface.co/Qwen/Qwen3-ForcedAligner-0.6B) |
 
 ## Requirements
 
@@ -209,6 +211,15 @@ python scripts/convert_hf_to_gguf.py \
     --input /path/to/Qwen3-ForcedAligner-0.6B \
     --output models/qwen3-forced-aligner-0.6b-f16.gguf \
     --type f16
+
+# Download & convert Oruk Fourier-2B (native HuggingFace format, English-only, CC BY-NC 4.0)
+huggingface-cli download oruk/oruk-fourier-2b \
+    config.json model.safetensors tokenizer.json tokenizer_config.json \
+    --local-dir models/oruk-fourier-2b
+python scripts/convert_hf_to_gguf.py \
+    --input models/oruk-fourier-2b \
+    --output models/oruk-fourier-2b-q8_0.gguf \
+    --type q8_0
 ```
 
 ## Supported Languages
